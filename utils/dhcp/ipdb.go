@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
 )
 
 type Lease struct {
@@ -25,7 +26,9 @@ func (i *IPDB) AddHost(
 	nextIP := make(net.IP, len(i.LastIP))
 
 	switch {
-	case ip.Equal(net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}), ip.Equal(net.IP{0, 0, 0, 0}), ip.Equal(net.IP{}):
+	case ip.Equal(net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}),
+		ip.Equal(net.IP{0, 0, 0, 0}),
+		ip.Equal(net.IP{}):
 		nextIP = NextIP(i.LastIP)
 	default:
 		copy(nextIP, ip)
@@ -96,37 +99,35 @@ func (i *IPDB) ContainsHostname(hostname string) bool {
 
 func (i *IPDB) NextIP() net.IP {
 	ip := NextIP(i.LastIP)
-	for !i.ContainsIP(ip) {
+	for i.ContainsIP(ip) {
 		ip = NextIP(ip)
 	}
 
 	return ip
 }
 
-func NextIP(ip net.IP) net.IP {
+func NextIP(ip net.IP, masks ...net.IPMask) net.IP {
 	newIP := make(net.IP, len(ip))
 	copy(newIP, ip)
-	var typ = 6
+	var typ = 16
 
 	if newIP.To4() != nil {
 		newIP = newIP.To4()
 		typ = 4
 	}
 
-	switch typ {
-	case 4:
-		for i := 3; i > 0; i-- {
-			if newIP[i] < 255 {
-				newIP[i] = newIP[i] + 1
-				break
+	for i := typ - 1; i > 0; i-- {
+		if newIP[i] < 255 {
+			newIP[i] = newIP[i] + 1
+			for n := i + 1; n < typ; n++ {
+				if newIP[n] < 255 {
+					newIP[n] = newIP[n] + 1
+					break
+				}
 			}
-		}
-	case 16:
-		for i := 15; i > 0; i-- {
-			if newIP[i] < 255 {
-				newIP[i] = newIP[i] + 1
-				break
-			}
+			break
+		} else {
+			newIP[i] = 0
 		}
 	}
 
@@ -160,11 +161,21 @@ func NewIPDB(input ...string) *IPDB {
 		panic(err)
 	}
 
+	netInterface := "lo"
+	if netIfi := os.Getenv("NETIFI"); netIfi != "" {
+		netInterface = netIfi
+	}
+
+	netIface, err := net.InterfaceByName(netInterface)
+	if err != nil {
+		panic(err)
+	}
+
 	return &IPDB{
 		IPNet:  *ipnet,
 		LastIP: ip,
 		Leases: []*Lease{
-			&Lease{ip, net.HardwareAddr{}, hostname},
+			{ip, netIface.HardwareAddr, hostname},
 		},
 	}
 }

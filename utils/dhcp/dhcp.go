@@ -9,7 +9,7 @@ import (
 	"github.com/google/gopacket/pcapgo"
 )
 
-var ROUTER = "192.168.1.1/24"
+var ROUTER = "192.168.1.255/16"
 var POOL *IPDB
 
 func main() {
@@ -34,7 +34,12 @@ func main() {
 		return
 	}
 
-	r, err := pcapgo.NewEthernetHandle("lo")
+	netInterface := "lo"
+	if netIfi := os.Getenv("NETIFI"); netIfi != "" {
+		netInterface = netIfi
+	}
+
+	r, err := pcapgo.NewEthernetHandle(netInterface)
 	if err != nil {
 		panic(err)
 	}
