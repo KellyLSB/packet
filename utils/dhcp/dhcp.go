@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"net"
 	"os"
 
 	"github.com/google/gopacket"
@@ -72,6 +74,8 @@ func DHCPv4(tcp *layers.DHCPv4) {
 
 	fmt.Println(POOL)
 
+	hostname := string(bytes.Trim(tcp.ServerName, "\x00"))
+
 	for _, option := range tcp.Options {
 		switch option.Type {
 		case layers.DHCPOptMessageType:
@@ -80,7 +84,22 @@ func DHCPv4(tcp *layers.DHCPv4) {
 				POOL.AddHost(
 					tcp.ClientIP,
 					tcp.ClientHWAddr,
-					string(tcp.ServerName),
+					hostname,
+				)
+				POOL.AddHost(
+					net.IP{192, 168, 3, 2},
+					net.HardwareAddr{},
+					hostname,
+				)
+				POOL.AddHost(
+					net.IP{192, 168, 3, 1},
+					net.HardwareAddr{},
+					hostname,
+				)
+				POOL.AddHost(
+					tcp.ClientIP,
+					net.HardwareAddr{},
+					hostname,
 				)
 			case layers.DHCPMsgTypeOffer:
 			case layers.DHCPMsgTypeRequest:

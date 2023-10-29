@@ -22,25 +22,38 @@ func (i *IPDB) AddHost(
 	ip net.IP,
 	hardware net.HardwareAddr,
 	hostname string,
-) {
-	nextIP := make(net.IP, len(i.LastIP))
+) *Lease {
+	if hardware.String() != "" {
+		if lease := i.GetLeaseByHardwareAddr(hardware); lease != nil {
+			return lease
+		}
+	}
 
+	if hostname != "" {
+		if lease := i.GetLeaseByHostname(hostname); lease != nil {
+			return lease
+		}
+	}
+
+	var nextIP net.IP
 	switch {
 	case ip.Equal(net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}),
 		ip.Equal(net.IP{0, 0, 0, 0}),
 		ip.Equal(net.IP{}):
-		nextIP = NextIP(i.LastIP)
+		nextIP = i.NextIP()
 	default:
-		copy(nextIP, ip)
+		nextIP = i.OrNextIP(ip)
 	}
 
-	i.Leases = append(i.Leases, &Lease{
+	lease := &Lease{
 		IP:           nextIP,
 		HardwareAddr: hardware,
 		Hostname:     hostname,
-	})
+	}
 
+	i.Leases = append(i.Leases, lease)
 	i.LastIP = nextIP
+	return lease
 }
 
 func (i *IPDB) GetLeaseByIP(ip net.IP) *Lease {
@@ -97,13 +110,16 @@ func (i *IPDB) ContainsHostname(hostname string) bool {
 	return false
 }
 
-func (i *IPDB) NextIP() net.IP {
-	ip := NextIP(i.LastIP)
+func (i *IPDB) OrNextIP(ip net.IP) net.IP {
 	for i.ContainsIP(ip) {
 		ip = NextIP(ip)
 	}
 
 	return ip
+}
+
+func (i *IPDB) NextIP() net.IP {
+	return i.OrNextIP(NextIP(i.LastIP))
 }
 
 func NextIP(ip net.IP, masks ...net.IPMask) net.IP {
