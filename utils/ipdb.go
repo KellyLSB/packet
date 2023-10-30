@@ -1,20 +1,77 @@
 package utils
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"os"
+
+	"github.com/google/gopacket/layers"
 )
+
+type DNS struct {
+	IPs []net.IP
+}
+
+func (d *DNS) DNSLength() (num uint8) {
+	for _, ip := range d.IPs {
+		if ips := ip.To4(); ips != nil {
+			num = num + uint8(len(ips))
+		} else {
+			num = num + uint8(len(ip))
+		}
+	}
+	return num
+}
+
+func (d *DNS) DNSIPs() []byte {
+	var buf [][]byte = [][]byte{}
+	for _, ip := range d.IPs {
+		if ip.To4() != nil {
+			buf = append(buf, []byte(ip.To4()))
+		} else {
+			buf = append(buf, []byte(ip))
+		}
+	}
+	return bytes.Join(buf, []byte(""))
+}
 
 type Lease struct {
 	net.IP
 	net.HardwareAddr
-	Hostname string
+	Hostname         string
+	ClientIdentifier string
+}
+
+func (l *Lease) IPLength() (num uint8) {
+	if ip := l.IP.To4(); ip != nil {
+		return uint8(len(ip))
+	} else {
+		return uint8(len(l.IP))
+	}
+}
+
+func (l *Lease) IPBytes() []byte {
+	if ip := l.IP.To4(); ip != nil {
+		return []byte(ip)
+	} else {
+		return []byte(l.IP)
+	}
+}
+
+func (l *Lease) DNSResourceRecord() layers.DNSResourceRecord {
+	return layers.DNSResourceRecord{
+		Name: []byte(l.Hostname),
+		Type: layers.DNSTypeA,
+		IP:   l.IP,
+	}
 }
 
 type IPDB struct {
 	net.IPNet
 	LastIP net.IP
+	DNSIPs *DNS
+	MainIP *Lease
 	Leases []*Lease
 }
 
@@ -108,6 +165,41 @@ func (i *IPDB) ContainsHostname(hostname string) bool {
 	}
 
 	return false
+}
+
+func (i *IPDB) DNS() layers.DNS {
+	dns := layers.DNS{
+		ANCount: i.NumLeasesWithHostnames(),
+	}
+
+	for _, lease := range i.Leases {
+		if lease.Hostname == "" {
+			continue
+		}
+
+		record := lease.DNSResourceRecord()
+		if !bytes.ContainsAny(record.Name, ".") {
+			record.Name = bytes.Join([][]byte{
+				[]byte(i.MainIP.Hostname),
+				record.Name,
+			}, []byte("."))
+		}
+
+		dns.Answers = append(dns.Answers, record)
+	}
+
+	return dns
+}
+
+func (i *IPDB) NumLeasesWithHostnames() uint16 {
+	var num uint16 = 0
+	for _, lease := range i.Leases {
+		if lease.Hostname != "" {
+			num = num + 1
+		}
+	}
+
+	return num
 }
 
 func (i *IPDB) OrNextIP(ip net.IP) net.IP {
@@ -206,14 +298,22 @@ func (i *IPDB) String() string {
 }
 
 func NewIPDB(input ...string) *IPDB {
-	var hostname string
-	var network string
+	var (
+		hostname         string
+		network          string
+		clientIdentifier string
+	)
+
 	switch len(input) {
 	case 1:
 		network = input[0]
 	case 2:
 		network = input[0]
 		hostname = input[1]
+	case 3:
+		network = input[0]
+		hostname = input[1]
+		clientIdentifier = input[2]
 	}
 
 	ip, ipnet, err := net.ParseCIDR(network)
@@ -231,11 +331,18 @@ func NewIPDB(input ...string) *IPDB {
 		panic(err)
 	}
 
+	lease := &Lease{
+		IP:               ip,
+		HardwareAddr:     netIface.HardwareAddr,
+		Hostname:         hostname,
+		ClientIdentifier: clientIdentifier,
+	}
+
 	return &IPDB{
 		IPNet:  *ipnet,
 		LastIP: ip,
-		Leases: []*Lease{
-			{ip, netIface.HardwareAddr, hostname},
-		},
+		DNSIPs: &DNS{IPs: []net.IP{ip}},
+		MainIP: lease,
+		Leases: []*Lease{lease},
 	}
 }

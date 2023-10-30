@@ -3,13 +3,13 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"net"
 	"os"
 
 	"github.com/KellyLSB/packet/utils"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
+	"github.com/kr/pretty"
 )
 
 var (
@@ -71,44 +71,63 @@ func PacketReader(r gopacket.PacketDataSource) {
 }
 
 func DHCPv4(tcp *layers.DHCPv4) {
-	// res := layers.DHCPv4{
-	// 	Operation:    layers.DHCPOpReply,
-	// 	HardwareType: layers.LinkTypeEthernet,
-	// 	HardwareLen:  6,       // 6 = 10mb eth
-	// 	Xid:          tcp.Xid, // Transaction ID
-	// }
-
-	//fmt.Println(tcp)
+	res := layers.DHCPv4{
+		Operation:    layers.DHCPOpReply,
+		HardwareType: layers.LinkTypeEthernet,
+		HardwareLen:  6,       // 6 = 10mb eth
+		Xid:          tcp.Xid, // Transaction ID
+	}
 
 	fmt.Println(HOSTIPDB)
 
 	hostname := string(bytes.Trim(tcp.ServerName, "\x00"))
 
+	var lease *utils.Lease
 	for _, option := range tcp.Options {
 		switch option.Type {
 		case layers.DHCPOptMessageType:
 			switch layers.DHCPMsgType(option.Data[0]) {
 			case layers.DHCPMsgTypeDiscover:
-				HOSTIPDB.AddHost(
+				lease = HOSTIPDB.AddHost(
 					tcp.ClientIP,
 					tcp.ClientHWAddr,
 					hostname,
 				)
-				HOSTIPDB.AddHost(
-					net.IP{192, 168, 3, 2},
-					net.HardwareAddr{},
-					hostname,
-				)
-				HOSTIPDB.AddHost(
-					net.IP{192, 168, 3, 1},
-					net.HardwareAddr{},
-					hostname,
-				)
-				HOSTIPDB.AddHost(
-					tcp.ClientIP,
-					net.HardwareAddr{},
-					hostname,
-				)
+
+				res.YourClientIP = lease.IP
+				res.ClientHWAddr = lease.HardwareAddr
+				res.Options = append(res.Options, layers.DHCPOption{
+					Type:   layers.DHCPOpt(layers.DHCPMsgTypeOffer),
+					Length: 1,
+					Data:   []byte{2},
+				}, layers.DHCPOption{
+					Type:   layers.DHCPOpt(layers.DHCPOptServerID),
+					Length: HOSTIPDB.MainIP.IPLength(),
+					Data:   HOSTIPDB.MainIP.IPBytes(),
+				}, layers.DHCPOption{
+					Type:   layers.DHCPOpt(layers.DHCPOptLeaseTime),
+					Length: 4,
+					Data:   []byte{0, 0, 0, 30}, // Seconds?
+				}, layers.DHCPOption{
+					// Rebinding Time Value
+					Type:   layers.DHCPOpt(layers.DHCPOptT2),
+					Length: 4,
+					Data:   []byte{0, 0, 0, 59}, // Seconds?
+				}, layers.DHCPOption{
+					Type:   layers.DHCPOpt(layers.DHCPOptSubnetMask),
+					Length: 4,
+					Data:   HOSTIPDB.Mask,
+				}, layers.DHCPOption{
+					Type:   layers.DHCPOpt(layers.DHCPOptRouter),
+					Length: HOSTIPDB.MainIP.IPLength(),
+					Data:   HOSTIPDB.MainIP.IPBytes(),
+				}, layers.DHCPOption{
+					Type:   layers.DHCPOpt(layers.DHCPOptDNS),
+					Length: HOSTIPDB.DNSIPs.DNSLength(),
+					Data:   HOSTIPDB.DNSIPs.DNSIPs(),
+				}, layers.DHCPOption{
+					Type: layers.DHCPOpt(layers.DHCPOptEnd),
+				})
 			case layers.DHCPMsgTypeOffer:
 			case layers.DHCPMsgTypeRequest:
 			case layers.DHCPMsgTypeAck:
@@ -117,18 +136,22 @@ func DHCPv4(tcp *layers.DHCPv4) {
 			case layers.DHCPMsgTypeRelease:
 			case layers.DHCPMsgTypeInform:
 			}
+		case layers.DHCPOptClientID:
+			lease.ClientIdentifier = string(option.Data)
+		case layers.DHCPOptHostname:
+			lease.Hostname = string(option.Data)
 		}
 	}
 
 	fmt.Println(HOSTIPDB)
+	pretty.Println(res)
 
-	// buf := gopacket.NewSerializeBuffer()
-	// dns := HOSTIPDB.DNS()
-	// dns.SerializeTo(buf, gopacket.SerializeOptions{})
-	// fmt.Println(string(buf.Bytes()))
-	// f, err := os.Create("tmp.file")
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// f.Write(buf.Bytes())
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{}
+	gopacket.SerializeLayers(buf, opts,
+		&layers.Ethernet{},
+		&layers.IPv4{},
+		&layers.TCP{},
+		&res)
+	fmt.Println(buf.Bytes())
 }
