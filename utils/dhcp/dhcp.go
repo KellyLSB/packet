@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 
+	"github.com/KellyLSB/packet/utils"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
@@ -14,7 +15,7 @@ import (
 var (
 	HOSTCIDR = "192.168.1.1/24"
 	HOSTNAME = "home.kellybecker.me"
-	POOL     *IPDB
+	HOSTIPDB *utils.IPDB
 )
 
 func main() {
@@ -26,7 +27,7 @@ func main() {
 		HOSTNAME = hostname
 	}
 
-	POOL = NewIPDB(HOSTCIDR, HOSTNAME)
+	HOSTIPDB = utils.NewIPDB(HOSTCIDR, HOSTNAME)
 
 	if filename := os.Getenv("PCAPFILE"); filename != "" {
 		f, err := os.Open(filename)
@@ -79,7 +80,7 @@ func DHCPv4(tcp *layers.DHCPv4) {
 
 	//fmt.Println(tcp)
 
-	fmt.Println(POOL)
+	fmt.Println(HOSTIPDB)
 
 	hostname := string(bytes.Trim(tcp.ServerName, "\x00"))
 
@@ -88,22 +89,22 @@ func DHCPv4(tcp *layers.DHCPv4) {
 		case layers.DHCPOptMessageType:
 			switch layers.DHCPMsgType(option.Data[0]) {
 			case layers.DHCPMsgTypeDiscover:
-				POOL.AddHost(
+				HOSTIPDB.AddHost(
 					tcp.ClientIP,
 					tcp.ClientHWAddr,
 					hostname,
 				)
-				POOL.AddHost(
+				HOSTIPDB.AddHost(
 					net.IP{192, 168, 3, 2},
 					net.HardwareAddr{},
 					hostname,
 				)
-				POOL.AddHost(
+				HOSTIPDB.AddHost(
 					net.IP{192, 168, 3, 1},
 					net.HardwareAddr{},
 					hostname,
 				)
-				POOL.AddHost(
+				HOSTIPDB.AddHost(
 					tcp.ClientIP,
 					net.HardwareAddr{},
 					hostname,
@@ -119,5 +120,5 @@ func DHCPv4(tcp *layers.DHCPv4) {
 		}
 	}
 
-	fmt.Println(POOL)
+	fmt.Println(HOSTIPDB)
 }
