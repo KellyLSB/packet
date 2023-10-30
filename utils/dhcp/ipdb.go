@@ -119,7 +119,7 @@ func (i *IPDB) OrNextIP(ip net.IP) net.IP {
 }
 
 func (i *IPDB) NextIP() net.IP {
-	return i.OrNextIP(NextIP(i.LastIP))
+	return i.OrNextIP(NextIP(i.LastIP, i.IPNet.Mask))
 }
 
 func NextIP(ip net.IP, masks ...net.IPMask) net.IP {
@@ -132,11 +132,55 @@ func NextIP(ip net.IP, masks ...net.IPMask) net.IP {
 		typ = 4
 	}
 
+	var mask net.IPMask
+	for _, msk := range masks {
+		if len(msk) == typ {
+			mask = msk
+		}
+	}
+
 	for i := typ - 1; i > 0; i-- {
-		if newIP[i] < 255 {
+		// Qualify subnet range...
+		size, _ := mask.Size()
+		switch typ {
+		case 16:
+			switch {
+			case size >= 128 && i == 16,
+				size >= 124 && i == 15,
+				size >= 120 && i == 14,
+				size >= 116 && i == 13,
+				size >= 112 && i == 12,
+				size >= 108 && i == 11,
+				size >= 104 && i == 10,
+				size >= 100 && i == 9,
+				size >= 96 && i == 8,
+				size >= 92 && i == 7,
+				size >= 88 && i == 6,
+				size >= 84 && i == 5,
+				size >= 80 && i == 4,
+				size >= 76 && i == 3,
+				size >= 72 && i == 2,
+				size >= 68 && i == 1,
+				size >= 64 && i == 0:
+				newIP[16] = newIP[16] + 1
+				return newIP
+			}
+		case 4:
+			switch {
+			case size >= 32 && i == 3,
+				size >= 24 && i == 2,
+				size >= 16 && i == 1,
+				size >= 8 && i == 0:
+				newIP[3] = newIP[3] + 1
+				return newIP
+			}
+		}
+
+		// increase subnet
+		if newIP[i] < 254 {
 			newIP[i] = newIP[i] + 1
 			for n := i + 1; n < typ; n++ {
-				if newIP[n] < 255 {
+				if newIP[n] < 254 {
 					newIP[n] = newIP[n] + 1
 					break
 				}

@@ -11,7 +11,7 @@ import (
 	"github.com/google/gopacket/pcapgo"
 )
 
-var ROUTER = "192.168.1.255/16"
+var ROUTER = "192.168.1.254/24"
 var POOL *IPDB
 
 func main() {
