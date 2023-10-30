@@ -11,15 +11,22 @@ import (
 	"github.com/google/gopacket/pcapgo"
 )
 
-var ROUTER = "192.168.1.254/24"
-var POOL *IPDB
+var (
+	HOSTCIDR = "192.168.1.1/24"
+	HOSTNAME = "home.kellybecker.me"
+	POOL     *IPDB
+)
 
 func main() {
-	if router := os.Getenv("ROUTER"); router != "" {
-		ROUTER = router
+	if hostcidr := os.Getenv("HOSTCIDR"); hostcidr != "" {
+		HOSTCIDR = hostcidr
 	}
 
-	POOL = NewIPDB(ROUTER, "router")
+	if hostname := os.Getenv("HOSTNAME"); hostname != "" {
+		HOSTNAME = hostname
+	}
+
+	POOL = NewIPDB(HOSTCIDR, HOSTNAME)
 
 	if filename := os.Getenv("PCAPFILE"); filename != "" {
 		f, err := os.Open(filename)
