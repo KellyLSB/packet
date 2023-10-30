@@ -121,4 +121,14 @@ func DHCPv4(tcp *layers.DHCPv4) {
 	}
 
 	fmt.Println(HOSTIPDB)
+
+	// buf := gopacket.NewSerializeBuffer()
+	// dns := HOSTIPDB.DNS()
+	// dns.SerializeTo(buf, gopacket.SerializeOptions{})
+	// fmt.Println(string(buf.Bytes()))
+	// f, err := os.Create("tmp.file")
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// f.Write(buf.Bytes())
 }
