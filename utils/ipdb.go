@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"slices"
+	"time"
 
 	"github.com/google/gopacket/layers"
 )
@@ -40,8 +42,15 @@ func (d *DNS) DNSIPs() []byte {
 type Lease struct {
 	net.IP
 	net.HardwareAddr
+	LeaseTime        uint32
+	LeasedTime       time.Time
 	Hostname         string
 	ClientIdentifier string
+}
+
+func (l *Lease) Renew() bool {
+	l.LeasedTime = time.Now()
+	return true
 }
 
 func (l *Lease) IPLength() uint8 {
@@ -76,7 +85,50 @@ type IPDB struct {
 	Leases []*Lease
 }
 
+func (i *IPDB) Release(l *Lease) bool {
+	index := slices.Index(i.Leases, l)
+
+	i.Leases = append(
+		i.Leases[0:index],
+		i.Leases[index:]...,
+	)
+
+	return true
+}
+
 func (i *IPDB) AddHost(
+	ip net.IP,
+	hardware net.HardwareAddr,
+	hostname string,
+) *Lease {
+	if lease := i.GetHost(net.IP{}, hardware, hostname); lease != nil {
+		return lease
+	}
+
+	var nextIP net.IP
+	switch {
+	case ip.Equal(net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}),
+		ip.Equal(net.IP{0, 0, 0, 0}),
+		ip.Equal(net.IP{}):
+		nextIP = i.NextIP()
+	default:
+		nextIP = i.OrNextIP(ip)
+	}
+
+	lease := &Lease{
+		IP:           nextIP,
+		HardwareAddr: hardware,
+		LeaseTime:    uint32(60),
+		LeasedTime:   time.Now(),
+		Hostname:     hostname,
+	}
+
+	i.Leases = append(i.Leases, lease)
+	i.LastIP = nextIP
+	return lease
+}
+
+func (i *IPDB) GetHost(
 	ip net.IP,
 	hardware net.HardwareAddr,
 	hostname string,
@@ -93,25 +145,7 @@ func (i *IPDB) AddHost(
 		}
 	}
 
-	var nextIP net.IP
-	switch {
-	case ip.Equal(net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}),
-		ip.Equal(net.IP{0, 0, 0, 0}),
-		ip.Equal(net.IP{}):
-		nextIP = i.NextIP()
-	default:
-		nextIP = i.OrNextIP(ip)
-	}
-
-	lease := &Lease{
-		IP:           nextIP,
-		HardwareAddr: hardware,
-		Hostname:     hostname,
-	}
-
-	i.Leases = append(i.Leases, lease)
-	i.LastIP = nextIP
-	return lease
+	return i.GetLeaseByIP(ip)
 }
 
 func (i *IPDB) GetLeaseByIP(ip net.IP) *Lease {
@@ -207,7 +241,6 @@ func (i *IPDB) OrNextIP(ip net.IP) net.IP {
 		ip = NextIP(ip, i.IPNet.Mask)
 	}
 
-	i.LastIP = ip
 	return ip
 }
 
@@ -216,8 +249,7 @@ func (i *IPDB) NextIP() net.IP {
 }
 
 func NextIP(ip net.IP, masks ...net.IPMask) net.IP {
-	newIP := make(net.IP, len(ip))
-	copy(newIP, ip)
+	newIP := ParseIP(ip)
 	var typ = 16
 
 	if nip := newIP.To4(); nip != nil {
@@ -285,6 +317,12 @@ func NextIP(ip net.IP, masks ...net.IPMask) net.IP {
 	}
 
 	return newIP
+}
+
+func ParseIP(in []byte) (ip net.IP) {
+	ip = make(net.IP, len(in))
+	copy(ip, in)
+	return ip
 }
 
 func (i *IPDB) String() string {

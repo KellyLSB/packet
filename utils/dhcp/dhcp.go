@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
+	"net"
 	"os"
+	"strings"
 
 	"github.com/KellyLSB/packet/utils"
 	"github.com/google/gopacket"
@@ -13,7 +16,7 @@ import (
 )
 
 var (
-	HOSTCIDR = "0000:0000:0000:0000:0000:ffff:c0a8:0101/124"
+	HOSTCIDR = "0000:0000:0000:0000:0000:ffff:c0a8:0001/124"
 	HOSTNAME = "home.kellybecker.me"
 	HOSTIPDB *utils.IPDB
 )
@@ -29,18 +32,20 @@ func main() {
 
 	HOSTIPDB = utils.NewIPDB(HOSTCIDR, HOSTNAME)
 
-	if filename := os.Getenv("PCAPFILE"); filename != "" {
-		f, err := os.Open(filename)
-		if err != nil {
-			panic(err)
-		}
+	if filenames := os.Getenv("PCAPFILE"); filenames != "" {
+		for _, filename := range strings.Split(filenames, ":") {
+			f, err := os.Open(filename)
+			if err != nil {
+				panic(err)
+			}
 
-		r, err := pcapgo.NewReader(f)
-		if err != nil {
-			panic(err)
-		}
+			r, err := pcapgo.NewReader(f)
+			if err != nil {
+				panic(err)
+			}
 
-		PacketReader(r)
+			PacketReader(r)
+		}
 		return
 	}
 
@@ -78,9 +83,19 @@ func DHCPv4(tcp *layers.DHCPv4) {
 		Xid:          tcp.Xid, // Transaction ID
 	}
 
+	// @TODO:
+	// REMOVE FILLER
+	HOSTIPDB.AddHost(
+		net.IP{192, 168, 0, 2},
+		net.HardwareAddr{},
+		"filler",
+	)
+
 	fmt.Println(HOSTIPDB)
 
 	hostname := string(bytes.Trim(tcp.ServerName, "\x00"))
+
+	var parameters []byte
 
 	var lease *utils.Lease
 	for _, option := range tcp.Options {
@@ -129,7 +144,11 @@ func DHCPv4(tcp *layers.DHCPv4) {
 					Type: layers.DHCPOpt(layers.DHCPOptEnd),
 				})
 			case layers.DHCPMsgTypeOffer:
+				// NOOP on Server
 			case layers.DHCPMsgTypeRequest:
+				lease = HOSTIPDB.GetHost(
+					net.IP{}, tcp.ClientHWAddr, hostname,
+				)
 			case layers.DHCPMsgTypeAck:
 			case layers.DHCPMsgTypeNak:
 			case layers.DHCPMsgTypeDecline:
@@ -139,7 +158,23 @@ func DHCPv4(tcp *layers.DHCPv4) {
 		case layers.DHCPOptClientID:
 			lease.ClientIdentifier = string(option.Data)
 		case layers.DHCPOptHostname:
-			lease.Hostname = string(option.Data)
+			hostname = string(option.Data)
+			lease.Hostname = hostname
+		case layers.DHCPOptMaxMessageSize:
+			val := binary.BigEndian.Uint16(option.Data)
+			fmt.Printf("MaxMessageSize: %d\n", val)
+		case layers.DHCPOptServerID:
+			if !HOSTIPDB.MainIP.IP.Equal(utils.ParseIP(option.Data)) {
+				panic(fmt.Errorf("DHCP Server isn't the HOSTCIDR %v\n", HOSTCIDR))
+			}
+		case layers.DHCPOptRequestIP:
+			if !lease.IP.Equal(utils.ParseIP(option.Data)) {
+				panic(fmt.Errorf("Requested IP isn't Lease %v\n", lease))
+			}
+		case layers.DHCPOptLeaseTime:
+			lease.LeaseTime = binary.BigEndian.Uint32(option.Data)
+		case layers.DHCPOptParamsRequest:
+			parameters = append(parameters, option.Data...)
 		}
 	}
 
