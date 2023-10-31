@@ -150,6 +150,7 @@ func DHCPv4(tcp *layers.DHCPv4) {
 					net.IP{}, tcp.ClientHWAddr, hostname,
 				)
 
+				res.ClientIP = tcp.ClientIP
 				res.YourClientIP = lease.IP
 				res.ClientHWAddr = lease.HardwareAddr
 				res.Options = append(res.Options, layers.DHCPOption{
@@ -194,6 +195,7 @@ func DHCPv4(tcp *layers.DHCPv4) {
 					Type: layers.DHCPOpt(layers.DHCPOptEnd),
 				})
 			case layers.DHCPMsgTypeAck:
+				// NOOP on Server
 			case layers.DHCPMsgTypeNak:
 			case layers.DHCPMsgTypeDecline:
 			case layers.DHCPMsgTypeRelease:
