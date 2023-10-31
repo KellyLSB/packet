@@ -16,11 +16,12 @@ type DNS struct {
 func (d *DNS) DNSLength() (num uint8) {
 	for _, ip := range d.IPs {
 		if ips := ip.To4(); ips != nil {
-			num = num + uint8(len(ips))
+			num += uint8(len(ips))
 		} else {
-			num = num + uint8(len(ip))
+			num += uint8(len(ip))
 		}
 	}
+
 	return num
 }
 
@@ -43,7 +44,7 @@ type Lease struct {
 	ClientIdentifier string
 }
 
-func (l *Lease) IPLength() (num uint8) {
+func (l *Lease) IPLength() uint8 {
 	if ip := l.IP.To4(); ip != nil {
 		return uint8(len(ip))
 	} else {
@@ -191,11 +192,10 @@ func (i *IPDB) DNS() layers.DNS {
 	return dns
 }
 
-func (i *IPDB) NumLeasesWithHostnames() uint16 {
-	var num uint16 = 0
+func (i *IPDB) NumLeasesWithHostnames() (num uint16) {
 	for _, lease := range i.Leases {
 		if lease.Hostname != "" {
-			num = num + 1
+			num += 1
 		}
 	}
 
@@ -204,9 +204,10 @@ func (i *IPDB) NumLeasesWithHostnames() uint16 {
 
 func (i *IPDB) OrNextIP(ip net.IP) net.IP {
 	for i.ContainsIP(ip) {
-		ip = NextIP(ip)
+		ip = NextIP(ip, i.IPNet.Mask)
 	}
 
+	i.LastIP = ip
 	return ip
 }
 
@@ -219,8 +220,8 @@ func NextIP(ip net.IP, masks ...net.IPMask) net.IP {
 	copy(newIP, ip)
 	var typ = 16
 
-	if newIP.To4() != nil {
-		newIP = newIP.To4()
+	if nip := newIP.To4(); nip != nil {
+		newIP = nip
 		typ = 4
 	}
 
@@ -254,7 +255,7 @@ func NextIP(ip net.IP, masks ...net.IPMask) net.IP {
 				size >= 72 && i == 2,
 				size >= 68 && i == 1,
 				size >= 64 && i == 0:
-				newIP[16] = newIP[16] + 1
+				newIP[15] += 1
 				return newIP
 			}
 		case 4:
@@ -263,17 +264,17 @@ func NextIP(ip net.IP, masks ...net.IPMask) net.IP {
 				size >= 24 && i == 2,
 				size >= 16 && i == 1,
 				size >= 8 && i == 0:
-				newIP[3] = newIP[3] + 1
+				newIP[3] += 1
 				return newIP
 			}
 		}
 
 		// increase subnet
 		if newIP[i] < 254 {
-			newIP[i] = newIP[i] + 1
+			newIP[i] += 1
 			for n := i + 1; n < typ; n++ {
 				if newIP[n] < 254 {
-					newIP[n] = newIP[n] + 1
+					newIP[n] += 1
 					break
 				}
 			}

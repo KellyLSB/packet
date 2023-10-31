@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	HOSTCIDR = "192.168.1.1/24"
+	HOSTCIDR = "0000:0000:0000:0000:0000:ffff:c0a8:0101/124"
 	HOSTNAME = "home.kellybecker.me"
 	HOSTIPDB *utils.IPDB
 )
@@ -115,7 +115,7 @@ func DHCPv4(tcp *layers.DHCPv4) {
 					Data:   []byte{0, 0, 0, 59}, // Seconds?
 				}, layers.DHCPOption{
 					Type:   layers.DHCPOpt(layers.DHCPOptSubnetMask),
-					Length: 4,
+					Length: uint8(len(HOSTIPDB.Mask)),
 					Data:   HOSTIPDB.Mask,
 				}, layers.DHCPOption{
 					Type:   layers.DHCPOpt(layers.DHCPOptRouter),
