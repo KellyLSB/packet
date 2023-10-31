@@ -76,13 +76,6 @@ func PacketReader(r gopacket.PacketDataSource) {
 }
 
 func DHCPv4(tcp *layers.DHCPv4) {
-	res := layers.DHCPv4{
-		Operation:    layers.DHCPOpReply,
-		HardwareType: layers.LinkTypeEthernet,
-		HardwareLen:  6,       // 6 = 10mb eth
-		Xid:          tcp.Xid, // Transaction ID
-	}
-
 	// @TODO:
 	// REMOVE FILLER
 	HOSTIPDB.AddHost(
@@ -91,14 +84,25 @@ func DHCPv4(tcp *layers.DHCPv4) {
 		"filler",
 	)
 
-	fmt.Println(HOSTIPDB)
-
+	// Hostname identifying the Client
+	// DHCPOptHostname overrides this value.
 	hostname := string(bytes.Trim(tcp.ServerName, "\x00"))
 
-	var parameters []byte
-	var options []layers.DHCPOption
+	// Prepare the DHCPv4 Response packet.
+	res := layers.DHCPv4{
+		Operation:    layers.DHCPOpReply,
+		HardwareType: layers.LinkTypeEthernet,
+		HardwareLen:  6,       // 6 = 10mb eth
+		Xid:          tcp.Xid, // Transaction ID
+	}
 
-	var lease *utils.Lease
+	var (
+		parameters []byte              // Requested Response Options
+		options    []layers.DHCPOption // Response Option Cache
+		lease      *utils.Lease        // Lease of Client
+	)
+
+	// Begin iteration over the Request packet Options
 	for _, option := range tcp.Options {
 		switch option.Type {
 		case layers.DHCPOptMessageType:
@@ -156,6 +160,7 @@ func DHCPv4(tcp *layers.DHCPv4) {
 			case layers.DHCPMsgTypeRelease:
 			case layers.DHCPMsgTypeInform:
 			}
+		// Collect Request Options
 		case layers.DHCPOptClientID:
 			lease.ClientIdentifier = string(option.Data)
 		case layers.DHCPOptHostname:
@@ -177,51 +182,53 @@ func DHCPv4(tcp *layers.DHCPv4) {
 		case layers.DHCPOptParamsRequest:
 			parameters = append(parameters, option.Data...)
 		}
+	}
 
-		for _, parameter := range parameters {
-			opt := layers.DHCPOption{
-				Type: layers.DHCPOpt(parameter),
-			}
-
-			switch layers.DHCPOpt(parameter) {
-			case layers.DHCPOptSubnetMask:
-				opt.Length = uint8(len(HOSTIPDB.Mask))
-				opt.Data = HOSTIPDB.Mask
-			case layers.DHCPOptRouter:
-				opt.Length = HOSTIPDB.MainIP.IPLength()
-				opt.Data = HOSTIPDB.MainIP.IPBytes()
-			case layers.DHCPOptDNS:
-				opt.Length = HOSTIPDB.DNSIPs.DNSLength()
-				opt.Data = HOSTIPDB.DNSIPs.DNSIPs()
-			case layers.DHCPOptHostname:
-				host := []byte(lease.Hostname)
-				opt.Length = uint8(len(host))
-				opt.Data = host
-			case layers.DHCPOptDomainName:
-				fqdn := []byte(lease.FQDN(HOSTIPDB))
-				opt.Length = uint8(len(fqdn))
-				opt.Data = fqdn
-			case layers.DHCPOptLeaseTime:
-				opt.Length = 4
-				opt.Data = binary.BigEndian.AppendUint32([]byte{}, lease.LeaseTime)
-			case layers.DHCPOptServerID:
-				opt.Length = HOSTIPDB.MainIP.IPLength()
-				opt.Data = HOSTIPDB.MainIP.IPBytes()
-			}
-
-			if opt.Length > 0 {
-				options = append(options, opt)
-			}
+	// Populate the Response packet Options
+	for _, parameter := range parameters {
+		opt := layers.DHCPOption{
+			Type: layers.DHCPOpt(parameter),
 		}
 
-		res.Options = append(options, layers.DHCPOption{
-			Type: layers.DHCPOpt(layers.DHCPOptEnd),
-		})
+		switch layers.DHCPOpt(parameter) {
+		case layers.DHCPOptSubnetMask:
+			opt.Length = uint8(len(HOSTIPDB.Mask))
+			opt.Data = HOSTIPDB.Mask
+		case layers.DHCPOptRouter:
+			opt.Length = HOSTIPDB.MainIP.IPLength()
+			opt.Data = HOSTIPDB.MainIP.IPBytes()
+		case layers.DHCPOptDNS:
+			opt.Length = HOSTIPDB.DNSIPs.DNSLength()
+			opt.Data = HOSTIPDB.DNSIPs.DNSIPs()
+		case layers.DHCPOptHostname:
+			host := []byte(lease.Hostname)
+			opt.Length = uint8(len(host))
+			opt.Data = host
+		case layers.DHCPOptDomainName:
+			fqdn := []byte(lease.FQDN(HOSTIPDB))
+			opt.Length = uint8(len(fqdn))
+			opt.Data = fqdn
+		case layers.DHCPOptLeaseTime:
+			opt.Length = 4
+			opt.Data = binary.BigEndian.AppendUint32([]byte{}, lease.LeaseTime)
+		case layers.DHCPOptServerID:
+			opt.Length = HOSTIPDB.MainIP.IPLength()
+			opt.Data = HOSTIPDB.MainIP.IPBytes()
+		}
+
+		if opt.Length > 0 {
+			options = append(options, opt)
+		}
 	}
+
+	res.Options = append(options, layers.DHCPOption{
+		Type: layers.DHCPOpt(layers.DHCPOptEnd),
+	})
 
 	fmt.Println(HOSTIPDB)
 	pretty.Println(res)
 
+	// Serialize the Response packet for byte interface
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{}
 	gopacket.SerializeLayers(buf, opts,
@@ -231,5 +238,4 @@ func DHCPv4(tcp *layers.DHCPv4) {
 		&res)
 	fmt.Println(buf.Bytes())
 	fmt.Println(string(buf.Bytes()))
-
 }
