@@ -48,6 +48,22 @@ type Lease struct {
 	ClientIdentifier string
 }
 
+func NewLease(
+	ip net.IP,
+	hardware net.HardwareAddr,
+	hostname string,
+) (lease *Lease) {
+	lease = &Lease{
+		IP:           ip,
+		HardwareAddr: hardware,
+		LeaseTime:    uint32(60),
+		LeasedTime:   time.Now(),
+		Hostname:     hostname,
+	}
+
+	return lease
+}
+
 func (l *Lease) Renew() bool {
 	l.LeasedTime = time.Now()
 	return true
@@ -115,14 +131,7 @@ func (i *IPDB) AddHost(
 		nextIP = i.OrNextIP(ip)
 	}
 
-	lease := &Lease{
-		IP:           nextIP,
-		HardwareAddr: hardware,
-		LeaseTime:    uint32(60),
-		LeasedTime:   time.Now(),
-		Hostname:     hostname,
-	}
-
+	lease := NewLease(nextIP, hardware, hostname)
 	i.Leases = append(i.Leases, lease)
 	i.LastIP = nextIP
 	return lease
@@ -370,12 +379,8 @@ func NewIPDB(input ...string) *IPDB {
 		panic(err)
 	}
 
-	lease := &Lease{
-		IP:               ip,
-		HardwareAddr:     netIface.HardwareAddr,
-		Hostname:         hostname,
-		ClientIdentifier: clientIdentifier,
-	}
+	lease := NewLease(ip, netIface.HardwareAddr, hostname)
+	lease.ClientIdentifier = clientIdentifier
 
 	return &IPDB{
 		IPNet:  *ipnet,
