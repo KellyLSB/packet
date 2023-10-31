@@ -96,6 +96,7 @@ func DHCPv4(tcp *layers.DHCPv4) {
 	hostname := string(bytes.Trim(tcp.ServerName, "\x00"))
 
 	var parameters []byte
+	var options []layers.DHCPOption
 
 	var lease *utils.Lease
 	for _, option := range tcp.Options {
@@ -111,38 +112,17 @@ func DHCPv4(tcp *layers.DHCPv4) {
 
 				res.YourClientIP = lease.IP
 				res.ClientHWAddr = lease.HardwareAddr
-				res.Options = append(res.Options, layers.DHCPOption{
+				options = append(options, layers.DHCPOption{
 					Type:   layers.DHCPOpt(layers.DHCPMsgTypeOffer),
 					Length: 1,
 					Data:   []byte{byte(layers.DHCPMsgTypeOffer)},
-				}, layers.DHCPOption{
-					Type:   layers.DHCPOpt(layers.DHCPOptServerID),
-					Length: HOSTIPDB.MainIP.IPLength(),
-					Data:   HOSTIPDB.MainIP.IPBytes(),
-				}, layers.DHCPOption{
-					Type:   layers.DHCPOpt(layers.DHCPOptLeaseTime),
-					Length: 4,
-					Data:   binary.BigEndian.AppendUint32([]byte{}, lease.LeaseTime),
-				}, layers.DHCPOption{
-					// Rebinding Time Value
-					Type:   layers.DHCPOpt(layers.DHCPOptT2),
-					Length: 4,
-					Data:   []byte{0, 0, 0, 59}, // Seconds?
-				}, layers.DHCPOption{
-					Type:   layers.DHCPOpt(layers.DHCPOptSubnetMask),
-					Length: uint8(len(HOSTIPDB.Mask)),
-					Data:   HOSTIPDB.Mask,
-				}, layers.DHCPOption{
-					Type:   layers.DHCPOpt(layers.DHCPOptRouter),
-					Length: HOSTIPDB.MainIP.IPLength(),
-					Data:   HOSTIPDB.MainIP.IPBytes(),
-				}, layers.DHCPOption{
-					Type:   layers.DHCPOpt(layers.DHCPOptDNS),
-					Length: HOSTIPDB.DNSIPs.DNSLength(),
-					Data:   HOSTIPDB.DNSIPs.DNSIPs(),
-				}, layers.DHCPOption{
-					Type: layers.DHCPOpt(layers.DHCPOptEnd),
 				})
+				// layers.DHCPOption{
+				// 	// Rebinding Time Value
+				// 	Type:   layers.DHCPOpt(layers.DHCPOptT2),
+				// 	Length: 4,
+				// 	Data:   []byte{0, 0, 0, 59}, // Seconds?
+				// }
 			case layers.DHCPMsgTypeOffer:
 				// NOOP on Server
 			case layers.DHCPMsgTypeRequest:
@@ -153,47 +133,22 @@ func DHCPv4(tcp *layers.DHCPv4) {
 				res.ClientIP = tcp.ClientIP
 				res.YourClientIP = lease.IP
 				res.ClientHWAddr = lease.HardwareAddr
-				res.Options = append(res.Options, layers.DHCPOption{
+				options = append(options, layers.DHCPOption{
 					Type:   layers.DHCPOpt(layers.DHCPMsgTypeOffer),
 					Length: 1,
 					Data:   []byte{byte(layers.DHCPMsgTypeAck)},
-				}, layers.DHCPOption{
-					Type:   layers.DHCPOpt(layers.DHCPOptServerID),
-					Length: HOSTIPDB.MainIP.IPLength(),
-					Data:   HOSTIPDB.MainIP.IPBytes(),
-				}, layers.DHCPOption{
-					Type:   layers.DHCPOpt(layers.DHCPOptLeaseTime),
-					Length: 4,
-					Data:   binary.BigEndian.AppendUint32([]byte{}, lease.LeaseTime),
-				}, layers.DHCPOption{
-					// Renewal Time Value
-					Type:   layers.DHCPOpt(layers.DHCPOptT1),
-					Length: 4,
-					Data:   []byte{0, 0, 0, 30}, // Seconds?
-				}, layers.DHCPOption{
-					// Rebinding Time Value
-					Type:   layers.DHCPOpt(layers.DHCPOptT2),
-					Length: 4,
-					Data:   []byte{0, 0, 0, 52}, // Seconds?
-				}, layers.DHCPOption{
-					Type:   layers.DHCPOpt(layers.DHCPOptHostname),
-					Length: uint8(len(lease.Hostname)),
-					Data:   []byte(lease.Hostname),
-				}, layers.DHCPOption{
-					Type:   layers.DHCPOpt(layers.DHCPOptSubnetMask),
-					Length: uint8(len(HOSTIPDB.Mask)),
-					Data:   HOSTIPDB.Mask,
-				}, layers.DHCPOption{
-					Type:   layers.DHCPOpt(layers.DHCPOptRouter),
-					Length: HOSTIPDB.MainIP.IPLength(),
-					Data:   HOSTIPDB.MainIP.IPBytes(),
-				}, layers.DHCPOption{
-					Type:   layers.DHCPOpt(layers.DHCPOptDNS),
-					Length: HOSTIPDB.DNSIPs.DNSLength(),
-					Data:   HOSTIPDB.DNSIPs.DNSIPs(),
-				}, layers.DHCPOption{
-					Type: layers.DHCPOpt(layers.DHCPOptEnd),
 				})
+				// layers.DHCPOption{
+				// 	// Renewal Time Value
+				// 	Type:   layers.DHCPOpt(layers.DHCPOptT1),
+				// 	Length: 4,
+				// 	Data:   []byte{0, 0, 0, 30}, // Seconds?
+				// }, layers.DHCPOption{
+				// 	// Rebinding Time Value
+				// 	Type:   layers.DHCPOpt(layers.DHCPOptT2),
+				// 	Length: 4,
+				// 	Data:   []byte{0, 0, 0, 52}, // Seconds?
+				// }
 			case layers.DHCPMsgTypeAck:
 				// NOOP on Server
 			case layers.DHCPMsgTypeNak:
@@ -222,6 +177,46 @@ func DHCPv4(tcp *layers.DHCPv4) {
 		case layers.DHCPOptParamsRequest:
 			parameters = append(parameters, option.Data...)
 		}
+
+		for _, parameter := range parameters {
+			opt := layers.DHCPOption{
+				Type: layers.DHCPOpt(parameter),
+			}
+
+			switch layers.DHCPOpt(parameter) {
+			case layers.DHCPOptSubnetMask:
+				opt.Length = uint8(len(HOSTIPDB.Mask))
+				opt.Data = HOSTIPDB.Mask
+			case layers.DHCPOptRouter:
+				opt.Length = HOSTIPDB.MainIP.IPLength()
+				opt.Data = HOSTIPDB.MainIP.IPBytes()
+			case layers.DHCPOptDNS:
+				opt.Length = HOSTIPDB.DNSIPs.DNSLength()
+				opt.Data = HOSTIPDB.DNSIPs.DNSIPs()
+			case layers.DHCPOptHostname:
+				host := []byte(lease.Hostname)
+				opt.Length = uint8(len(host))
+				opt.Data = host
+			case layers.DHCPOptDomainName:
+				fqdn := []byte(lease.FQDN(HOSTIPDB))
+				opt.Length = uint8(len(fqdn))
+				opt.Data = fqdn
+			case layers.DHCPOptLeaseTime:
+				opt.Length = 4
+				opt.Data = binary.BigEndian.AppendUint32([]byte{}, lease.LeaseTime)
+			case layers.DHCPOptServerID:
+				opt.Length = HOSTIPDB.MainIP.IPLength()
+				opt.Data = HOSTIPDB.MainIP.IPBytes()
+			}
+
+			if opt.Length > 0 {
+				options = append(options, opt)
+			}
+		}
+
+		res.Options = append(options, layers.DHCPOption{
+			Type: layers.DHCPOpt(layers.DHCPOptEnd),
+		})
 	}
 
 	fmt.Println(HOSTIPDB)
@@ -235,4 +230,6 @@ func DHCPv4(tcp *layers.DHCPv4) {
 		&layers.TCP{},
 		&res)
 	fmt.Println(buf.Bytes())
+	fmt.Println(string(buf.Bytes()))
+
 }

@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/gopacket/layers"
@@ -67,6 +68,17 @@ func NewLease(
 func (l *Lease) Renew() bool {
 	l.LeasedTime = time.Now()
 	return true
+}
+
+func (l *Lease) FQDN(i *IPDB) string {
+	if strings.Contains(l.Hostname, ".") {
+		return l.Hostname
+	}
+
+	return strings.Join([]string{
+		i.MainIP.Hostname,
+		l.Hostname,
+	}, ".")
 }
 
 func (l *Lease) IPLength() uint8 {
@@ -221,15 +233,14 @@ func (i *IPDB) DNS() layers.DNS {
 			continue
 		}
 
+		host := lease.DNSResourceRecord()
 		record := lease.DNSResourceRecord()
-		if !bytes.ContainsAny(record.Name, ".") {
-			record.Name = bytes.Join([][]byte{
-				[]byte(i.MainIP.Hostname),
-				record.Name,
-			}, []byte("."))
+		record.Name = []byte(lease.FQDN(i))
+		if bytes.ContainsAny(host.Name, ".") {
+			dns.Answers = append(dns.Answers, host)
+		} else {
+			dns.Answers = append(dns.Answers, host, record)
 		}
-
-		dns.Answers = append(dns.Answers, record)
 	}
 
 	return dns
@@ -238,7 +249,12 @@ func (i *IPDB) DNS() layers.DNS {
 func (i *IPDB) NumLeasesWithHostnames() (num uint16) {
 	for _, lease := range i.Leases {
 		if lease.Hostname != "" {
-			num += 1
+			host := lease.DNSResourceRecord()
+			if bytes.ContainsAny(host.Name, ".") {
+				num += 1
+			} else {
+				num += 2
+			}
 		}
 	}
 
