@@ -141,13 +141,6 @@ func DHCPv4(tcp *layers.DHCPv4) {
 						Data:   []byte{byte(layers.DHCPMsgTypeDecline)},
 					})
 				}
-
-				// layers.DHCPOption{
-				// 	// Rebinding Time Value
-				// 	Type:   layers.DHCPOpt(layers.DHCPOptT2),
-				// 	Length: 4,
-				// 	Data:   []byte{0, 0, 0, 59}, // Seconds?
-				// }
 			case layers.DHCPMsgTypeOffer:
 				// NOOP on Server
 			case layers.DHCPMsgTypeRequest:
@@ -157,6 +150,8 @@ func DHCPv4(tcp *layers.DHCPv4) {
 					hostname,
 				)
 
+				lease.Renew()
+
 				res.ClientIP = tcp.ClientIP
 				res.YourClientIP = lease.IP
 				res.ClientHWAddr = lease.HardwareAddr
@@ -165,24 +160,36 @@ func DHCPv4(tcp *layers.DHCPv4) {
 					Length: 1,
 					Data:   []byte{byte(layers.DHCPMsgTypeAck)},
 				})
-
-				// layers.DHCPOption{
-				// 	// Renewal Time Value
-				// 	Type:   layers.DHCPOpt(layers.DHCPOptT1),
-				// 	Length: 4,
-				// 	Data:   []byte{0, 0, 0, 30}, // Seconds?
-				// }, layers.DHCPOption{
-				// 	// Rebinding Time Value
-				// 	Type:   layers.DHCPOpt(layers.DHCPOptT2),
-				// 	Length: 4,
-				// 	Data:   []byte{0, 0, 0, 52}, // Seconds?
-				// }
 			case layers.DHCPMsgTypeAck:
 				// NOOP on Server
 			case layers.DHCPMsgTypeNak:
+				// NOOP on Server
 			case layers.DHCPMsgTypeDecline:
+				// NOOP on Server
 			case layers.DHCPMsgTypeRelease:
+				lease = HOSTIPDB.GetHost(
+					tcp.ClientIP,
+					tcp.ClientHWAddr,
+					hostname,
+				)
+
+				HOSTIPDB.Release(lease)
+
+				res.ClientIP = tcp.ClientIP
+				res.ClientHWAddr = lease.HardwareAddr
+				options = append(options, layers.DHCPOption{
+					Type:   layers.DHCPOpt(layers.DHCPOptMessageType),
+					Length: 1,
+					Data:   []byte{byte(layers.DHCPMsgTypeAck)},
+				})
 			case layers.DHCPMsgTypeInform:
+				res.ClientIP = tcp.ClientIP
+				res.ClientHWAddr = tcp.ClientHWAddr
+				options = append(options, layers.DHCPOption{
+					Type:   layers.DHCPOpt(layers.DHCPOptMessageType),
+					Length: 1,
+					Data:   []byte{byte(layers.DHCPMsgTypeAck)},
+				})
 			}
 
 		// Collect Request Options
