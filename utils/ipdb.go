@@ -17,9 +17,9 @@ type DNS struct {
 	IPs []net.IP
 }
 
-func (d *DNS) DNSLength() (num uint8) {
+func (d *DNS) DNSLength(c16 ...bool) (num uint8) {
 	for _, ip := range d.IPs {
-		if ips := ip.To4(); ips != nil {
+		if ips := ip.To4(); ips != nil && len(c16) < 1 {
 			num += uint8(len(ips))
 		} else {
 			num += uint8(len(ip))
@@ -29,13 +29,17 @@ func (d *DNS) DNSLength() (num uint8) {
 	return num
 }
 
-func (d *DNS) DNSIPs() []byte {
+func (d *DNS) DNSIPs(c16 ...bool) []byte {
 	var buf [][]byte = [][]byte{}
+	var bol bool
 	for _, ip := range d.IPs {
-		if ip.To4() != nil {
-			buf = append(buf, []byte(ip.To4()))
+		if ips := ip.To4(); ips != nil && len(c16) < 1 {
+			buf = append(buf, []byte(ips))
+			bol = true
 		} else {
-			buf = append(buf, []byte(ip))
+			if !bol {
+				buf = append(buf, []byte(ip))
+			}
 		}
 	}
 	return bytes.Join(buf, []byte(""))
@@ -83,16 +87,16 @@ func (l *Lease) FQDN(i *IPDB) string {
 	}, ".")
 }
 
-func (l *Lease) IPLength() uint8 {
-	if ip := l.IP.To4(); ip != nil {
+func (l *Lease) IPLength(c16 ...bool) uint8 {
+	if ip := l.IP.To4(); ip != nil && len(c16) < 1 {
 		return uint8(len(ip))
 	} else {
 		return uint8(len(l.IP))
 	}
 }
 
-func (l *Lease) IPBytes() []byte {
-	if ip := l.IP.To4(); ip != nil {
+func (l *Lease) IPBytes(c16 ...bool) []byte {
+	if ip := l.IP.To4(); ip != nil && len(c16) < 1 {
 		return []byte(ip)
 	} else {
 		return []byte(l.IP)
