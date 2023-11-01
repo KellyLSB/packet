@@ -7,6 +7,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/gopacket/layers"
@@ -43,6 +44,7 @@ func (d *DNS) DNSIPs() []byte {
 type Lease struct {
 	net.IP
 	net.HardwareAddr
+	Allocated        bool
 	LeaseTime        uint32
 	LeasedTime       time.Time
 	Hostname         string
@@ -106,6 +108,8 @@ func (l *Lease) DNSResourceRecord() layers.DNSResourceRecord {
 }
 
 type IPDB struct {
+	sync.Mutex
+
 	net.IPNet
 	LastIP net.IP
 	DNSIPs *DNS
@@ -114,6 +118,8 @@ type IPDB struct {
 }
 
 func (i *IPDB) Release(l *Lease) bool {
+	i.Mutex.Lock()
+	defer i.Mutex.Unlock()
 	index := slices.Index(i.Leases, l)
 
 	i.Leases = append(
@@ -133,19 +139,30 @@ func (i *IPDB) AddHost(
 		return lease
 	}
 
-	var nextIP net.IP
+	var (
+		nextIP net.IP
+		ipZero bool
+	)
+
 	switch {
 	case ip.Equal(net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}),
 		ip.Equal(net.IP{0, 0, 0, 0}),
 		ip.Equal(net.IP{}):
 		nextIP = i.NextIP()
+		ipZero = true
 	default:
 		nextIP = i.OrNextIP(ip)
 	}
 
+	i.Mutex.Lock()
+	defer i.Mutex.Unlock()
+
 	lease := NewLease(nextIP, hardware, hostname)
 	i.Leases = append(i.Leases, lease)
-	i.LastIP = nextIP
+	if ipZero {
+		i.LastIP = nextIP
+	}
+
 	return lease
 }
 
@@ -217,6 +234,30 @@ func (i *IPDB) GetLeaseByHostname(hostname string) *Lease {
 
 func (i *IPDB) ContainsHostname(hostname string) bool {
 	if lease := i.GetLeaseByHostname(hostname); lease != nil {
+		return true
+	}
+
+	return false
+}
+
+func (i *IPDB) GetLeaseByIPHardwareAddr(ip net.IP, hardware net.HardwareAddr, or ...bool) *Lease {
+	for _, lease := range i.Leases {
+		if len(or) > 0 {
+			if lease.IP.Equal(ip) || lease.HardwareAddr.String() == hardware.String() {
+				return lease
+			}
+		} else {
+			if lease.IP.Equal(ip) && lease.HardwareAddr.String() == hardware.String() {
+				return lease
+			}
+		}
+	}
+
+	return nil
+}
+
+func (i *IPDB) ContainsIPHardwareAddr(ip net.IP, hardware net.HardwareAddr, or ...bool) bool {
+	if lease := i.GetLeaseByIPHardwareAddr(ip, hardware, or...); lease != nil {
 		return true
 	}
 
