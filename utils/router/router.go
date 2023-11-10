@@ -62,8 +62,12 @@ func main() {
 	PacketReader(r)
 }
 
-func PacketReader(r gopacket.PacketDataSource) {
-	pkgsrc := gopacket.NewPacketSource(r, layers.LayerTypeEthernet)
+func PacketReader(r gopacket.PacketDataSource, l ...gopacket.LayerType) {
+	if len(l) < 1 {
+		l = append(l, layers.LayerTypeEthernet)
+	}
+
+	pkgsrc := gopacket.NewPacketSource(r, l[0])
 	for packet := range pkgsrc.Packets() {
 		//pretty.Println(packet.ApplicationLayer().LayerType())
 		for _, layer := range packet.Layers() {
