@@ -7,17 +7,23 @@ import (
 	"github.com/KellyLSB/packet/utils"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 	"github.com/google/gopacket/pcapgo"
 )
 
 var (
-	HOSTCIDR = "0000:0000:0000:0000:0000:ffff:c0a8:0001/124"
+	HOSTCIDR = "192.168.0.1/24"
 	HOSTIDNT = "router:dhcpv4,dhcpv6"
 	HOSTNAME = "home.kellybecker.me"
 	HOSTIPDB *utils.IPDB
 )
 
 func main() {
+	var (
+		file *os.File
+		err  error
+	)
+
 	if hostcidr := os.Getenv("HOSTCIDR"); hostcidr != "" {
 		HOSTCIDR = hostcidr
 	}
@@ -30,6 +36,13 @@ func main() {
 		HOSTNAME = hostname
 	}
 
+	if filename := os.Getenv("FILENAME"); filename != "" {
+		file, err = os.Create(filename)
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	HOSTIPDB = utils.NewIPDB(HOSTCIDR, HOSTNAME, HOSTIDNT)
 
 	if filenames := os.Getenv("PCAPFILE"); filenames != "" {
@@ -39,12 +52,12 @@ func main() {
 				panic(err)
 			}
 
-			r, err := pcapgo.NewReader(f)
+			open, err := pcap.OpenOfflineFile(f)
 			if err != nil {
 				panic(err)
 			}
 
-			PacketReader(r)
+			PacketSourcer(open, file)
 		}
 		return
 	}
@@ -54,31 +67,68 @@ func main() {
 		netInterface = netIfi
 	}
 
-	r, err := pcapgo.NewEthernetHandle(netInterface)
+	open, err := pcap.OpenLive(netInterface, 1600, true, pcap.BlockForever)
 	if err != nil {
 		panic(err)
 	}
 
-	PacketReader(r)
+	PacketSourcer(open, file)
 }
 
-func PacketReader(r gopacket.PacketDataSource, l ...gopacket.LayerType) {
-	if len(l) < 1 {
-		l = append(l, layers.LayerTypeEthernet)
+func PacketSourcer(open *pcap.Handle, f *os.File) {
+	var (
+		writer *pcapgo.NgWriter
+		err    error
+	)
+
+	if f != nil {
+		writer, err = pcapgo.NewNgWriter(f, open.LinkType())
+		if err != nil {
+			panic(err)
+		}
+		defer writer.Flush()
 	}
 
-	pkgsrc := gopacket.NewPacketSource(r, l[0])
-	for packet := range pkgsrc.Packets() {
-		//pretty.Println(packet.ApplicationLayer().LayerType())
+	packets := gopacket.NewPacketSource(open, open.LinkType())
+	for packet := range packets.Packets() {
+		var data []byte
 		for _, layer := range packet.Layers() {
 			switch layer.LayerType() {
 			case layers.LayerTypeDHCPv4:
 				tcp, _ := layer.(*layers.DHCPv4)
-				DHCPv4(tcp)
+				data = DHCPv4(tcp)
+				err = open.WritePacketData(data)
 			case layers.LayerTypeDHCPv6:
 				tcp, _ := layer.(*layers.DHCPv6)
-				DHCPv6(tcp, packet)
+				data = DHCPv6(tcp, packet)
+				err = open.WritePacketData(data)
 			}
+		}
+
+		if err != nil {
+			panic(err)
+		}
+
+		if writer != nil {
+			ci := packet.Metadata().CaptureInfo
+			ci.InterfaceIndex = 0
+			err = writer.WritePacket(ci, packet.Data())
+			if err != nil {
+				panic(err)
+			}
+
+			packet = gopacket.NewPacket(data, layers.LayerTypeEthernet, gopacket.Default)
+			if len(packet.Data()) > 0 {
+				ci := packet.Metadata().CaptureInfo
+				ci.InterfaceIndex = 0
+				ci.Length = len(packet.Data())
+				ci.CaptureLength = len(packet.Data())
+				err = writer.WritePacket(ci, packet.Data())
+				if err != nil {
+					panic(err)
+				}
+			}
+			writer.Flush()
 		}
 	}
 }

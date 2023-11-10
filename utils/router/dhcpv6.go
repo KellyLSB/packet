@@ -2,13 +2,13 @@ package main
 
 import (
 	"encoding/binary"
-	"fmt"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/kr/pretty"
 )
 
-func DHCPv6(tcp *layers.DHCPv6, packet gopacket.Packet) {
+func DHCPv6(tcp *layers.DHCPv6, packet gopacket.Packet) []byte {
 	// Prepare the DHCPv6 Response packet.
 	res := layers.DHCPv6{
 		MsgType:       layers.DHCPv6MsgTypeAdverstise,
@@ -75,5 +75,7 @@ func DHCPv6(tcp *layers.DHCPv6, packet gopacket.Packet) {
 		&layers.IPv6{},
 		&layers.UDP{},
 		&res)
-	fmt.Println(string(buf.Bytes()))
+
+	pretty.Println(res)
+	return buf.Bytes()
 }

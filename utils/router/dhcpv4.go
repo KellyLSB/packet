@@ -3,14 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 
 	"github.com/KellyLSB/packet/utils"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/kr/pretty"
 )
 
-func DHCPv4(tcp *layers.DHCPv4) {
+func DHCPv4(tcp *layers.DHCPv4) []byte {
 	// Hostname identifying the Client
 	// DHCPOptHostname overrides this value.
 	hostname := string(bytes.Trim(tcp.ServerName, "\x00"))
@@ -205,5 +205,7 @@ func DHCPv4(tcp *layers.DHCPv4) {
 		&layers.IPv4{},
 		&layers.UDP{},
 		&res)
-	fmt.Println(string(buf.Bytes()))
+
+	pretty.Println(res)
+	return buf.Bytes()
 }
