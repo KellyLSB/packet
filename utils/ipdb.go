@@ -389,12 +389,6 @@ func NextIP(ip net.IP, masks ...net.IPMask) net.IP {
 	return newIP
 }
 
-func ParseIP(in []byte) (ip net.IP) {
-	ip = make(net.IP, len(in))
-	copy(ip, in)
-	return ip
-}
-
 func (i *IPDB) String() string {
 	var output string = ""
 	output += fmt.Sprintln(i.IPNet)
@@ -450,4 +444,10 @@ func NewIPDB(input ...string) *IPDB {
 		MainIP: lease,
 		Leases: []*Lease{lease},
 	}
+}
+
+func ParseIP(in []byte) (ip net.IP) {
+	ip = make(net.IP, len(in))
+	copy(ip, in)
+	return ip
 }
