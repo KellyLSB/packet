@@ -82,8 +82,8 @@ func (l *Lease) FQDN(i *IPDB) string {
 	}
 
 	return strings.Join([]string{
-		i.MainIP.Hostname,
 		l.Hostname,
+		i.MainIP.Hostname,
 	}, ".")
 }
 
@@ -148,13 +148,10 @@ func (i *IPDB) AddHost(
 		ipZero bool
 	)
 
-	switch {
-	case ip.Equal(net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}),
-		ip.Equal(net.IP{0, 0, 0, 0}),
-		ip.Equal(net.IP{}):
+	if EmptyIP(ip) {
 		nextIP = i.NextIP()
 		ipZero = true
-	default:
+	} else {
 		nextIP = i.OrNextIP(ip)
 	}
 
@@ -450,4 +447,8 @@ func ParseIP(in []byte) (ip net.IP) {
 	ip = make(net.IP, len(in))
 	copy(ip, in)
 	return ip
+}
+
+func EmptyIP(ip net.IP) bool {
+	return ip.Equal(net.IP{}) || ip.IsUnspecified()
 }

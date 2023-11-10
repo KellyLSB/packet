@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/kr/pretty"
 )
 
 func DHCPv6(tcp *layers.DHCPv6, packet gopacket.Packet) {
@@ -68,8 +67,6 @@ func DHCPv6(tcp *layers.DHCPv6, packet gopacket.Packet) {
 
 	res.Options = options
 
-	pretty.Println(res)
-
 	// Serialize the Response packet for byte interface
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{}
@@ -78,6 +75,5 @@ func DHCPv6(tcp *layers.DHCPv6, packet gopacket.Packet) {
 		&layers.IPv6{},
 		&layers.UDP{},
 		&res)
-	fmt.Println(buf.Bytes())
 	fmt.Println(string(buf.Bytes()))
 }

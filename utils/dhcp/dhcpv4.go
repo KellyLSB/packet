@@ -4,23 +4,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"net"
 
 	"github.com/KellyLSB/packet/utils"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/kr/pretty"
 )
 
 func DHCPv4(tcp *layers.DHCPv4) {
-	// @TODO:
-	// REMOVE FILLER
-	HOSTIPDB.AddHost(
-		net.IP{192, 168, 0, 2},
-		net.HardwareAddr{},
-		"filler",
-	)
-
 	// Hostname identifying the Client
 	// DHCPOptHostname overrides this value.
 	hostname := string(bytes.Trim(tcp.ServerName, "\x00"))
@@ -130,16 +120,34 @@ func DHCPv4(tcp *layers.DHCPv4) {
 		case layers.DHCPOptHostname:
 			hostname = string(option.Data)
 			lease.Hostname = hostname
-		case layers.DHCPOptMaxMessageSize:
-			val := binary.BigEndian.Uint16(option.Data)
-			fmt.Printf("MaxMessageSize: %d\n", val)
+		//case layers.DHCPOptMaxMessageSize:
+		//val := binary.BigEndian.Uint16(option.Data)
+		//fmt.Printf("MaxMessageSize: %d\n", val)
 		case layers.DHCPOptServerID:
+			// NAK The response if the DHCP server isn't the expectation.
 			if !HOSTIPDB.MainIP.IP.Equal(utils.ParseIP(option.Data)) {
-				panic(fmt.Errorf("DHCP Server isn't the HOSTCIDR %v", HOSTCIDR))
+				for i, option := range options {
+					if option.Type == layers.DHCPOptMessageType {
+						options[i].Data = []byte{byte(layers.DHCPMsgTypeNak)}
+					}
+				}
 			}
 		case layers.DHCPOptRequestIP:
-			if !lease.IP.Equal(utils.ParseIP(option.Data)) {
-				panic(fmt.Errorf("Requested IP isn't Lease %v", lease))
+			// NAK The response if the lease cannot request an IP address
+			ip := utils.ParseIP(option.Data)
+			if HOSTIPDB.GetLeaseByIP(ip) == nil {
+				if !utils.EmptyIP(res.YourClientIP) {
+					res.YourClientIP = ip
+				}
+				lease.IP = ip
+			}
+
+			if !lease.IP.Equal(ip) {
+				for i, option := range options {
+					if option.Type == layers.DHCPOptMessageType {
+						options[i].Data = []byte{byte(layers.DHCPMsgTypeNak)}
+					}
+				}
 			}
 		case layers.DHCPOptLeaseTime:
 			lease.LeaseTime = binary.BigEndian.Uint32(option.Data)
@@ -189,9 +197,6 @@ func DHCPv4(tcp *layers.DHCPv4) {
 		Type: layers.DHCPOpt(layers.DHCPOptEnd),
 	})
 
-	fmt.Println(HOSTIPDB)
-	pretty.Println(res)
-
 	// Serialize the Response packet for byte interface
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{}
@@ -200,6 +205,5 @@ func DHCPv4(tcp *layers.DHCPv4) {
 		&layers.IPv4{},
 		&layers.UDP{},
 		&res)
-	fmt.Println(buf.Bytes())
 	fmt.Println(string(buf.Bytes()))
 }
