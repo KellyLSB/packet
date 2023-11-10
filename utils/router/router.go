@@ -12,7 +12,7 @@ import (
 
 var (
 	HOSTCIDR = "0000:0000:0000:0000:0000:ffff:c0a8:0001/124"
-	HOSTIDNT = "router:dhcpv4"
+	HOSTIDNT = "router:dhcpv4,dhcpv6"
 	HOSTNAME = "home.kellybecker.me"
 	HOSTIPDB *utils.IPDB
 )
@@ -65,6 +65,7 @@ func main() {
 func PacketReader(r gopacket.PacketDataSource) {
 	pkgsrc := gopacket.NewPacketSource(r, layers.LayerTypeEthernet)
 	for packet := range pkgsrc.Packets() {
+		//pretty.Println(packet.ApplicationLayer().LayerType())
 		for _, layer := range packet.Layers() {
 			switch layer.LayerType() {
 			case layers.LayerTypeDHCPv4:
